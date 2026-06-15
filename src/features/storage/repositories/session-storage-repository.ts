@@ -6,6 +6,7 @@ import { initializeStorageSchema, openStorageDatabase } from "@/features/storage
 export interface SessionStorageRepository {
   create(input: CreateEncryptedSessionInput): Promise<PersistedEncryptedSession>;
   findBySessionId(sessionId: string): Promise<PersistedEncryptedSession | null>;
+  findByDedupeKey(dedupeKey: string): Promise<PersistedEncryptedSession | null>;
   list(): Promise<PersistedEncryptedSession[]>;
   updateSyncStatus(sessionId: string, syncStatus: SyncStatus): Promise<void>;
   delete(sessionId: string): Promise<void>;
@@ -21,13 +22,15 @@ export class SQLiteSessionStorageRepository implements SessionStorageRepository 
     const sessionId = input.sessionId ?? createSessionId();
     const timestamp = input.timestamp ?? new Date().toISOString();
     const syncStatus = input.syncStatus ?? "pending";
+    const dedupeKey = input.dedupeKey ?? null;
     const encryptedPayload = await encryptPayload(input.payload);
 
     try {
       const result = await db.runAsync(
-        `INSERT INTO encrypted_sessions (session_id, encrypted_payload, timestamp, sync_status)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO encrypted_sessions (session_id, dedupe_key, encrypted_payload, timestamp, sync_status)
+         VALUES (?, ?, ?, ?, ?)`,
         sessionId,
+        dedupeKey,
         encryptedPayload,
         timestamp,
         syncStatus,
@@ -36,6 +39,7 @@ export class SQLiteSessionStorageRepository implements SessionStorageRepository 
       return {
         id: Number(result.lastInsertRowId),
         sessionId,
+        dedupeKey,
         encryptedPayload,
         timestamp,
         syncStatus,
@@ -71,13 +75,37 @@ export class SQLiteSessionStorageRepository implements SessionStorageRepository 
     }
   }
 
+  async findByDedupeKey(
+    dedupeKey: string,
+  ): Promise<PersistedEncryptedSession | null> {
+    await initializeStorageSchema();
+    const db = await openStorageDatabase();
+
+    try {
+      const row = await db.getFirstAsync<EncryptedSessionRow>(
+        `SELECT id, session_id, dedupe_key, encrypted_payload, timestamp, sync_status
+         FROM encrypted_sessions
+         WHERE dedupe_key = ?`,
+        dedupeKey,
+      );
+
+      return row ? mapRow(row) : null;
+    } catch (cause) {
+      throw new StorageError(
+        "database_read_failed",
+        "Failed to read encrypted session by dedupe key.",
+        cause,
+      );
+    }
+  }
+
   async list(): Promise<PersistedEncryptedSession[]> {
     await initializeStorageSchema();
     const db = await openStorageDatabase();
 
     try {
       const rows = await db.getAllAsync<EncryptedSessionRow>(
-        `SELECT id, session_id, encrypted_payload, timestamp, sync_status
+        `SELECT id, session_id, dedupe_key, encrypted_payload, timestamp, sync_status
          FROM encrypted_sessions
          ORDER BY timestamp DESC`,
       );
@@ -140,6 +168,7 @@ export class SQLiteSessionStorageRepository implements SessionStorageRepository 
 type EncryptedSessionRow = {
   id: number;
   session_id: string;
+  dedupe_key: string | null;
   encrypted_payload: string;
   timestamp: string;
   sync_status: SyncStatus;
@@ -149,6 +178,7 @@ function mapRow(row: EncryptedSessionRow): PersistedEncryptedSession {
   return {
     id: row.id,
     sessionId: row.session_id,
+    dedupeKey: row.dedupe_key,
     encryptedPayload: row.encrypted_payload,
     timestamp: row.timestamp,
     syncStatus: row.sync_status,
