@@ -8,39 +8,50 @@ import { useColorScheme } from "react-native";
 
 import { useAppSettingsStore } from "@/core/theme/app-settings-store";
 import {
-  darkColors,
-  lightColors,
-  spacing,
-  typography,
+  borderTokens,
+  colorTokens,
+  radiusTokens,
+  shadowTokens,
+  spacingTokens,
+  typographyTokens,
 } from "@/core/theme/tokens";
 
-type AppTheme = {
-  colorScheme: "light" | "dark";
-  colors: typeof lightColors | typeof darkColors;
-  spacing: typeof spacing;
-  typography: typeof typography;
+type ThemeColorScheme = "light" | "dark";
+
+export type ThemeTokens = {
+  colors: (typeof colorTokens)[ThemeColorScheme];
+  spacing: typeof spacingTokens;
+  typography: typeof typographyTokens;
+  radius: typeof radiusTokens;
+  border: typeof borderTokens;
+  shadow: typeof shadowTokens;
 };
 
-const ThemeContext = createContext<AppTheme | null>(null);
+type ThemeContextValue = ThemeTokens & {
+  colorScheme: ThemeColorScheme;
+};
+
+const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: PropsWithChildren) {
   const systemColorScheme = useColorScheme();
   const themePreference = useAppSettingsStore(
     (state) => state.themePreference,
   );
-  const resolvedSystemColorScheme =
+  const resolvedSystemColorScheme: ThemeColorScheme =
     systemColorScheme === "dark" ? "dark" : "light";
-  const colorScheme =
-    themePreference === "system"
-      ? resolvedSystemColorScheme
-      : themePreference;
+  const colorScheme: ThemeColorScheme =
+    themePreference === "system" ? resolvedSystemColorScheme : themePreference;
 
-  const theme = useMemo<AppTheme>(
+  const theme = useMemo<ThemeContextValue>(
     () => ({
       colorScheme,
-      colors: colorScheme === "dark" ? darkColors : lightColors,
-      spacing,
-      typography,
+      colors: colorTokens[colorScheme],
+      spacing: spacingTokens,
+      typography: typographyTokens,
+      radius: radiusTokens,
+      border: borderTokens,
+      shadow: shadowTokens,
     }),
     [colorScheme],
   );
@@ -50,7 +61,7 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   );
 }
 
-export function useAppTheme(): AppTheme {
+export function useAppTheme(): ThemeContextValue {
   const theme = useContext(ThemeContext);
 
   if (!theme) {

@@ -1,8 +1,15 @@
 import { Component, type ErrorInfo, type PropsWithChildren } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { darkColors, spacing, typography } from "@/core/theme/tokens";
+import {
+  borderTokens,
+  colorTokens,
+  radiusTokens,
+  spacingTokens,
+  typographyTokens,
+} from "@/core/theme/tokens";
 import { reportError } from "@/core/utils/report-error";
+import { LoadingState } from "@/shared/components/ui";
 
 type State = {
   hasError: boolean;
@@ -40,6 +47,7 @@ export class GlobalErrorBoundary extends Component<PropsWithChildren, State> {
           The application could not complete the operation. No sensitive details
           have been displayed.
         </Text>
+        <LoadingState compact label="Recovering" />
         <Pressable
           accessibilityRole="button"
           onPress={this.reset}
@@ -55,30 +63,31 @@ export class GlobalErrorBoundary extends Component<PropsWithChildren, State> {
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    backgroundColor: darkColors.background,
+    backgroundColor: colorTokens.dark.background,
     flex: 1,
     justifyContent: "center",
-    padding: spacing.lg,
+    padding: spacingTokens[6],
   },
   title: {
-    color: darkColors.textPrimary,
-    fontSize: typography.title,
-    fontWeight: "700",
+    color: colorTokens.dark.textPrimary,
+    fontSize: typographyTokens.size["2xl"],
+    fontFamily: typographyTokens.fontFamily.bold,
   },
   message: {
-    color: darkColors.textSecondary,
-    fontSize: typography.body,
-    marginVertical: spacing.md,
+    color: colorTokens.dark.textSecondary,
+    fontSize: typographyTokens.size.md,
+    marginVertical: spacingTokens[4],
     textAlign: "center",
   },
   button: {
-    backgroundColor: darkColors.primary,
-    borderRadius: 8,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    backgroundColor: colorTokens.dark.primary,
+    borderRadius: radiusTokens.md,
+    borderWidth: borderTokens.hairlineWidth,
+    paddingHorizontal: spacingTokens[6],
+    paddingVertical: spacingTokens[3],
   },
   buttonText: {
-    color: darkColors.background,
-    fontWeight: "700",
+    color: colorTokens.dark.primaryText,
+    fontFamily: typographyTokens.fontFamily.bold,
   },
 });
