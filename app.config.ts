@@ -21,7 +21,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   android: {
     package: "com.stanbic.kycoptimizer",
   },
-  plugins: ["expo-router", "expo-font"],
+  plugins: [
+    "expo-router",
+    "expo-font",
+    "expo-secure-store",
+    "expo-sqlite",
+  ],
   experiments: {
     typedRoutes: true,
   },
