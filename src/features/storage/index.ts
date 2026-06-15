@@ -1,5 +1,6 @@
 export { StorageError, type StorageErrorCode } from "./errors/storage-error";
 export {
+  createSessionId,
   decryptPayload,
   encryptPayload,
   getOrCreateEncryptionKey,

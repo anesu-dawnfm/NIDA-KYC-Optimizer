@@ -43,8 +43,20 @@ create table if not exists public.audit_logs (
   id uuid primary key default gen_random_uuid(),
   actor_id uuid not null references public.agents (id) on delete cascade,
   submission_id uuid references public.kyc_submissions (id) on delete set null,
-  event_type text not null check (
-    event_type in ('created', 'updated', 'submitted', 'synced', 'retry_scheduled', 'rejected', 'deleted')
+  event_type text not null constraint audit_logs_event_type_check check (
+    event_type in (
+      'scan_started',
+      'scan_completed',
+      'validation_completed',
+      'sync_queued',
+      'sync_started',
+      'sync_completed',
+      'sync_failed',
+      'sync_retry_scheduled',
+      'submitted',
+      'synced',
+      'rejected'
+    )
   ),
   event_data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default timezone('utc', now())

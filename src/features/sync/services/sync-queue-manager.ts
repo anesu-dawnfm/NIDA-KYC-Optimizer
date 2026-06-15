@@ -1,4 +1,5 @@
 import { ApiError } from "@/core/api";
+import { auditLogService } from "@/features/audit";
 import {
   type CreateEncryptedSessionInput,
   type PersistedEncryptedSession,
@@ -87,6 +88,12 @@ export class OfflineFirstSyncQueueManager {
     } satisfies CreateEncryptedSessionInput);
 
     useSyncStore.getState().incrementQueueCount();
+    void auditLogService.logSyncEvent({
+      sessionId: record.sessionId,
+      status: "queued",
+      payloadHash: dedupeKey,
+      queueCount: useSyncStore.getState().queueCount,
+    });
 
     return {
       record,
@@ -125,6 +132,11 @@ export class OfflineFirstSyncQueueManager {
 
     this.clearRetryTimer();
     useSyncStore.getState().setSyncing(true);
+    void auditLogService.logSyncEvent({
+      sessionId: "sync-run",
+      status: "started",
+      queueCount: await this.calculateQueueCount(),
+    });
 
     const queue = await this.loadQueue();
     let syncedCount = 0;
@@ -135,7 +147,7 @@ export class OfflineFirstSyncQueueManager {
         const payload = await this.repository.hydratePayload<unknown>(record);
 
         try {
-          await this.transport.submitSession({
+          const transportResult = await this.transport.submitSession({
             dedupeKey: record.dedupeKey,
             payload,
             sessionId: record.sessionId,
@@ -144,15 +156,37 @@ export class OfflineFirstSyncQueueManager {
           });
           await this.repository.updateSyncStatus(record.sessionId, "synced");
           syncedCount += 1;
+          void auditLogService.logSyncEvent({
+            sessionId: record.sessionId,
+            submissionId: transportResult.submissionId ?? null,
+            status: "completed",
+            payloadHash: record.dedupeKey ?? record.sessionId,
+            attemptCount: 1,
+            syncedAt: this.now().toISOString(),
+          });
         } catch (cause) {
           if (cause instanceof ApiError && cause.code === "conflict") {
             await this.repository.updateSyncStatus(record.sessionId, "synced");
             syncedCount += 1;
+            void auditLogService.logSyncEvent({
+              sessionId: record.sessionId,
+              status: "completed",
+              payloadHash: record.dedupeKey ?? record.sessionId,
+              attemptCount: 1,
+              syncedAt: this.now().toISOString(),
+            });
             continue;
           }
 
           await this.repository.updateSyncStatus(record.sessionId, "failed");
           failedCount += 1;
+          void auditLogService.logSyncEvent({
+            sessionId: record.sessionId,
+            status: "failed",
+            payloadHash: record.dedupeKey ?? record.sessionId,
+            attemptCount: useSyncStore.getState().retryAttempt + 1,
+            errorMessage: cause instanceof Error ? cause.message : "Sync failed.",
+          });
 
           if (this.shouldRetry(cause)) {
             this.scheduleRetry(cause);
@@ -213,6 +247,13 @@ export class OfflineFirstSyncQueueManager {
       attempt,
       lastSyncError: cause instanceof Error ? cause.message : "Sync failed.",
       nextRetryAt,
+    });
+    void auditLogService.logSyncEvent({
+      sessionId: "sync-run",
+      status: "retry_scheduled",
+      attemptCount: attempt,
+      errorMessage: cause instanceof Error ? cause.message : "Sync failed.",
+      syncedAt: nextRetryAt,
     });
 
     this.clearRetryTimer();

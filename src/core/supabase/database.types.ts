@@ -15,13 +15,17 @@ export type SubmissionStatus =
   | "rejected"
   | "failed";
 export type AuditEventType =
-  | "created"
-  | "updated"
+  | "scan_started"
+  | "scan_completed"
+  | "validation_completed"
+  | "sync_queued"
+  | "sync_started"
+  | "sync_completed"
+  | "sync_failed"
+  | "sync_retry_scheduled"
   | "submitted"
   | "synced"
-  | "retry_scheduled"
-  | "rejected"
-  | "deleted";
+  | "rejected";
 export type SyncEventType = "queued" | "retry" | "synced" | "failed";
 export type SyncStatus = "pending" | "synced" | "failed";
 

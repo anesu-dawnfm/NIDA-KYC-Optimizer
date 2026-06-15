@@ -1,12 +1,14 @@
 import { createPayloadFingerprint } from "@/features/sync/services/sync-fingerprint";
 import { SupabaseError } from "@/core/supabase";
 import type { Json } from "@/core/supabase";
-import { SupabaseAuditLogsRepository } from "@/features/supabase/repositories/audit-logs-repository";
 import { SupabaseKycSubmissionsRepository } from "@/features/supabase/repositories/kyc-submissions-repository";
 import { SupabaseSyncEventsRepository } from "@/features/supabase/repositories/sync-events-repository";
 import type { SyncTransportPayload } from "@/features/sync/types/sync";
 
-import type { SyncTransport } from "@/features/sync/services/sync-transport";
+import type {
+  SyncTransport,
+  SyncTransportResult,
+} from "@/features/sync/services/sync-transport";
 
 function toSubmissionStatus(syncStatus: SyncTransportPayload["syncStatus"]) {
   if (syncStatus === "synced") {
@@ -21,10 +23,11 @@ function toSubmissionStatus(syncStatus: SyncTransportPayload["syncStatus"]) {
 }
 
 export const supabaseSyncTransport: SyncTransport = {
-  async submitSession(payload: SyncTransportPayload): Promise<void> {
+  async submitSession(
+    payload: SyncTransportPayload,
+  ): Promise<SyncTransportResult> {
     const submissionsRepository = new SupabaseKycSubmissionsRepository();
     const syncEventsRepository = new SupabaseSyncEventsRepository();
-    const auditLogsRepository = new SupabaseAuditLogsRepository();
 
     try {
       const payloadHash = await createPayloadFingerprint(payload.payload);
@@ -46,14 +49,7 @@ export const supabaseSyncTransport: SyncTransport = {
         lastSyncedAt: payload.timestamp,
       });
 
-      await auditLogsRepository.appendLog({
-        eventType: "synced",
-        submissionId: submission.id,
-        eventData: {
-          sessionId: payload.sessionId,
-          submittedAt: payload.timestamp,
-        },
-      });
+      return { submissionId: submission.id };
     } catch (cause) {
       throw new SupabaseError(
         "request_failed",

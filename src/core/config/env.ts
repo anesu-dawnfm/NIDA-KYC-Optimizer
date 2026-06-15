@@ -1,5 +1,3 @@
-import "react-native-url-polyfill/auto";
-
 type AppEnvironment = "development" | "test" | "staging" | "production";
 
 function readAppEnvironment(value: string | undefined): AppEnvironment {

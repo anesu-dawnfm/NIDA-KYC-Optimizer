@@ -4,18 +4,24 @@ import { supabaseSyncTransport } from "@/features/supabase";
 
 import type { SyncTransportPayload } from "@/features/sync/types/sync";
 
+export type SyncTransportResult = {
+  submissionId?: string;
+};
+
 export interface SyncTransport {
-  submitSession(payload: SyncTransportPayload): Promise<void>;
+  submitSession(payload: SyncTransportPayload): Promise<SyncTransportResult>;
 }
 
 export const apiSyncTransport: SyncTransport = {
-  async submitSession(payload: SyncTransportPayload): Promise<void> {
+  async submitSession(
+    payload: SyncTransportPayload,
+  ): Promise<SyncTransportResult> {
     if (env.hasSupabaseConfig) {
-      await supabaseSyncTransport.submitSession(payload);
-      return;
+      return supabaseSyncTransport.submitSession(payload);
     }
 
     await apiClient.post("/sync/sessions", payload);
+    return {};
   },
 };
 

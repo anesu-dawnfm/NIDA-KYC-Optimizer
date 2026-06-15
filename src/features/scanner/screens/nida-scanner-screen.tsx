@@ -6,6 +6,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { router } from "expo-router";
 import {
   CameraView,
   type CameraCapturedPicture,
@@ -13,18 +14,27 @@ import {
 } from "expo-camera";
 
 import { useAppTheme } from "@/core/theme/theme-provider";
+import { auditLogService } from "@/features/audit";
+import { parseNidaDocument } from "@/features/parser";
+import { validateNidaDocument } from "@/features/validation";
 import { ScannerAutoCaptureIndicator } from "@/features/scanner/components/scanner-auto-capture-indicator";
 import { NidaScannerOverlay } from "@/features/scanner/components/nida-scanner-overlay";
 import { ScannerTopStatus } from "@/features/scanner/components/scanner-top-status";
 import { useScannerConnectivity } from "@/features/scanner/hooks/use-scanner-connectivity";
 import { useScannerQueueCount } from "@/features/scanner/hooks/use-scanner-queue-count";
 import { useOcrProcessor } from "@/features/ocr/hooks/use-ocr-processor";
+import { useScanResultStore } from "@/features/results/store/use-scan-result-store";
+import { createSessionId } from "@/features/storage";
 import { Button } from "@/shared/components/ui";
 
 export function NidaScannerScreen() {
   const { colors, spacing, typography, radius } = useAppTheme();
   const connectivity = useScannerConnectivity();
   const queueCount = useScannerQueueCount((state) => state.queueCount);
+  const setCurrentResult = useScanResultStore((state) => state.setCurrentResult);
+  const setCurrentSessionId = useScanResultStore(
+    (state) => state.setCurrentSessionId,
+  );
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<InstanceType<typeof CameraView> | null>(null);
   const { status, result, error, processOcr, reset } = useOcrProcessor();
@@ -107,6 +117,13 @@ export function NidaScannerScreen() {
 
     setCaptureError(null);
     reset();
+    const sessionId = createSessionId();
+    setCurrentSessionId(sessionId);
+    await auditLogService.logScanStarted({
+      sessionId,
+      imageUri: null,
+    });
+    const startedAt = Date.now();
 
     try {
       const photo: CameraCapturedPicture = await camera.takePictureAsync({
@@ -116,8 +133,39 @@ export function NidaScannerScreen() {
         shutterSound: false,
       });
 
-      await processOcr({ imageUri: photo.uri });
+      const ocrResult = await processOcr({ imageUri: photo.uri });
+      const parsed = parseNidaDocument({ rawText: ocrResult.text });
+      const validation = validateNidaDocument(parsed);
+
+      setCurrentResult({ parsed, validation });
+      await auditLogService.logScanCompleted({
+        sessionId,
+        durationMs: ocrResult.metrics.durationMs ?? Date.now() - startedAt,
+        blocksRecognized: ocrResult.blocks.length,
+        charactersRecognized: ocrResult.text.length,
+        outcome: "success",
+      });
+      await auditLogService.logValidationCompleted({
+        sessionId,
+        confidence: parsed.overallConfidence,
+        validationStatus: validation.status,
+        issues: validation.issues.map((issue) => ({
+          code: issue.code,
+          field: issue.field,
+          message: issue.message,
+        })),
+      });
+
+      router.replace("/results");
     } catch (cause) {
+      await auditLogService.logScanCompleted({
+        sessionId,
+        durationMs: Date.now() - startedAt,
+        blocksRecognized: 0,
+        charactersRecognized: 0,
+        outcome: "failed",
+        errorMessage: cause instanceof Error ? cause.message : "Unable to process scan.",
+      });
       const message =
         cause instanceof Error ? cause.message : "Unable to process scan.";
       setCaptureError(message);
