@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   SafeAreaView,
@@ -6,7 +6,11 @@ import {
   Text,
   View,
 } from "react-native";
-import { CameraView, useCameraPermissions } from "expo-camera";
+import {
+  CameraView,
+  type CameraCapturedPicture,
+  useCameraPermissions,
+} from "expo-camera";
 
 import { useAppTheme } from "@/core/theme/theme-provider";
 import { ScannerAutoCaptureIndicator } from "@/features/scanner/components/scanner-auto-capture-indicator";
@@ -14,6 +18,7 @@ import { NidaScannerOverlay } from "@/features/scanner/components/nida-scanner-o
 import { ScannerTopStatus } from "@/features/scanner/components/scanner-top-status";
 import { useScannerConnectivity } from "@/features/scanner/hooks/use-scanner-connectivity";
 import { useScannerQueueCount } from "@/features/scanner/hooks/use-scanner-queue-count";
+import { useOcrProcessor } from "@/features/ocr/hooks/use-ocr-processor";
 import { Button } from "@/shared/components/ui";
 
 export function NidaScannerScreen() {
@@ -21,12 +26,17 @@ export function NidaScannerScreen() {
   const connectivity = useScannerConnectivity();
   const queueCount = useScannerQueueCount((state) => state.queueCount);
   const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<InstanceType<typeof CameraView> | null>(null);
+  const { status, result, error, processOcr, reset } = useOcrProcessor();
+  const [captureError, setCaptureError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!permission?.granted && permission?.status !== "denied") {
       void requestPermission();
     }
   }, [permission, requestPermission]);
+
+  const isProcessing = status === "processing";
 
   const permissionContent = useMemo(() => {
     if (!permission) {
@@ -87,6 +97,33 @@ export function NidaScannerScreen() {
     return null;
   }, [colors, permission, requestPermission, typography]);
 
+  const handleScan = async () => {
+    const camera = cameraRef.current;
+
+    if (!camera) {
+      setCaptureError("Camera is not ready yet.");
+      return;
+    }
+
+    setCaptureError(null);
+    reset();
+
+    try {
+      const photo: CameraCapturedPicture = await camera.takePictureAsync({
+        quality: 0.9,
+        exif: false,
+        base64: false,
+        shutterSound: false,
+      });
+
+      await processOcr({ imageUri: photo.uri });
+    } catch (cause) {
+      const message =
+        cause instanceof Error ? cause.message : "Unable to process scan.";
+      setCaptureError(message);
+    }
+  };
+
   return (
     <SafeAreaView
       style={[
@@ -106,6 +143,7 @@ export function NidaScannerScreen() {
         <View style={styles.previewShell}>
           {permission?.granted ? (
             <CameraView
+              ref={cameraRef}
               facing="back"
               style={styles.preview}
               enableTorch={false}
@@ -145,13 +183,66 @@ export function NidaScannerScreen() {
               styles.footerText,
               {
                 color: colors.textSecondary,
-                fontFamily: typography.fontFamily.regular,
-              },
-            ]}
+              fontFamily: typography.fontFamily.regular,
+            },
+          ]}
           >
-            Images are not stored. Capture output is processed in memory only and
-            handed off to the validation flow.
+            Images are processed on-device and deleted immediately after OCR.
           </Text>
+          <Button
+            fullWidth
+            label={isProcessing ? "Scanning..." : "Scan NIDA Card"}
+            loading={isProcessing}
+            onPress={() => void handleScan()}
+            variant="primary"
+          />
+          {captureError ? (
+            <Text style={[styles.errorText, { color: colors.danger }]}>
+              {captureError}
+            </Text>
+          ) : null}
+          {error ? (
+            <Text style={[styles.errorText, { color: colors.danger }]}>
+              {error.message}
+            </Text>
+          ) : null}
+          {result ? (
+            <View
+              style={[
+                styles.resultBox,
+                {
+                  backgroundColor: colors.surfaceMuted,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  padding: spacing[3],
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.resultTitle,
+                  {
+                    color: colors.textPrimary,
+                    fontFamily: typography.fontFamily.semibold,
+                  },
+                ]}
+              >
+                OCR Ready
+              </Text>
+              <Text
+                style={[
+                  styles.resultText,
+                  {
+                    color: colors.textSecondary,
+                    fontFamily: typography.fontFamily.regular,
+                  },
+                ]}
+              >
+                {result.blocks.length} blocks recognized. {result.text.length}{" "}
+                characters extracted.
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -208,5 +299,20 @@ const styles = StyleSheet.create({
   permissionText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  errorText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  resultBox: {
+    borderWidth: 1,
+    gap: 6,
+  },
+  resultTitle: {
+    fontSize: 14,
+  },
+  resultText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });
