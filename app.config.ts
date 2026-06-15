@@ -13,6 +13,10 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ios: {
     supportsTablet: false,
     bundleIdentifier: "com.stanbic.kycoptimizer",
+    infoPlist: {
+      NSCameraUsageDescription:
+        "Allow camera access to scan NIDA cards for KYC verification.",
+    },
   },
   android: {
     package: "com.stanbic.kycoptimizer",
